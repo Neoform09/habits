@@ -298,9 +298,12 @@ function load(){
     CODES.forEach((c,i)=>s.codes[c[0]]={g:c[1],w:1,name:c[2],ord:i});
     HABITS.forEach(h=>s.habits.push({id:"h"+(s.nextId++),name:h[2],tags:h[0].split(" "),f:h[1],arch:false}));
   }
+  if(!s.ts){s.ts={};for(const k in s.log)for(const id in s.log[k])s.ts[k+"|"+id]=1;}
+  if(s.cfgTs===undefined)s.cfgTs=0;
   return s;
 }
 let S=load();
+function touchCfg(){S.cfgTs=Date.now();save();pushCfg()}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 
 
@@ -398,8 +401,9 @@ function renderToday(){
     const card=b.closest(".h");const id=card.dataset.id,k=card.dataset.k,q=+b.dataset.q;
     const L=S.log[k]||(S.log[k]={});
     if(L[id]===q)delete L[id];else L[id]=q;
+    S.ts[k+"|"+id]=Date.now();
     if(!Object.keys(L).length)delete S.log[k];
-    if(cur<S.start&&k.startsWith("D:"))S.start=cur;
+    if(cur<S.start&&k.startsWith("D:")){S.start=cur;touchCfg()}
     save();queueSync(k);
     const y=window.scrollY;renderTop();renderToday();window.scrollTo(0,y);
   });
@@ -474,8 +478,8 @@ function renderHabits(){
   main.querySelectorAll(".er .ib").forEach(b=>b.onclick=()=>{
     const id=b.closest(".er").dataset.id,h=hById(id),a=b.dataset.a;
     if(a==="ed")editHabit(h);
-    if(a==="back"){h.arch=false;save();renderHabits()}
-    if(a==="up"){const same=S.habits.filter(x=>!x.arch&&x.f===h.f);const i=same.indexOf(h);if(i>0){const o=same[i-1];const ia=S.habits.indexOf(h),ib=S.habits.indexOf(o);S.habits[ia]=o;S.habits[ib]=h;save();renderHabits()}}
+    if(a==="back"){h.arch=false;touchCfg();renderHabits()}
+    if(a==="up"){const same=S.habits.filter(x=>!x.arch&&x.f===h.f);const i=same.indexOf(h);if(i>0){const o=same[i-1];const ia=S.habits.indexOf(h),ib=S.habits.indexOf(o);S.habits[ia]=o;S.habits[ib]=h;touchCfg();renderHabits()}}
   });
 }
 function editHabit(h){
@@ -499,11 +503,11 @@ function editHabit(h){
     const name=m.querySelector("#hn").value.trim();if(!name){toast("Give it a name");return}
     if(!d.tags.length){toast("Pick at least one category");return}
     const f=m.querySelector("#hf").value;
-    if(isNew)S.habits.push({id:"h"+(S.nextId++),name,tags:d.tags,f,arch:false});
+    if(isNew)S.habits.push({id:"h"+Date.now().toString(36)+Math.random().toString(36).slice(2,5),name,tags:d.tags,f,arch:false});
     else{if(h.f!==f){}h.name=name;h.tags=d.tags;h.f=f}
-    save();m.remove();renderHabits();toast("Saved");
+    touchCfg();m.remove();renderHabits();toast("Saved");
   };
-  if(!isNew)m.querySelector("#hd").onclick=()=>{h.arch=true;save();m.remove();renderHabits();toast("Removed")};
+  if(!isNew)m.querySelector("#hd").onclick=()=>{h.arch=true;touchCfg();m.remove();renderHabits();toast("Removed")};
 }
 
 
@@ -516,40 +520,97 @@ function renderWeights(){
       <select class="t" data-cg="${c}"><option value="pro" ${x.g==="pro"?"selected":""}>Prof.</option><option value="per" ${x.g==="per"?"selected":""}>Pers.</option></select>
       <input class="t" type="number" step="0.5" min="0" inputmode="decimal" data-c="${c}" value="${x.w}"></div>`}).join("")+
     `<button class="btn ghost" id="addc">+ Add category</button></div>`;
-  html+=`<div class="card"><h2>Backup</h2><div class="small mute">Ratings also go to your App Logs sheet automatically.</div>
+  html+=`<div class="card"><h2>Backup</h2><div class="small mute">Phone and computer stay in sync through your App Logs sheet.</div><div style="margin-top:8px;font-weight:700" id="syncst">${syncText()}</div><button class="btn" id="syncnow">Sync now</button>
     <button class="btn ghost" id="exp">Download backup file</button><button class="btn ghost" id="imp">Restore from backup file</button>
     <input type="file" id="impf" accept=".json,application/json" hidden>
     <label class="l">Counting starts on</label><input class="t" type="date" id="st" value="${S.start}"></div>`;
   main.innerHTML=html;
-  main.querySelectorAll("[data-g]").forEach(i=>i.onchange=()=>{S.groups[i.dataset.g].w=Math.max(0,+i.value||0);save();renderWeights()});
-  main.querySelectorAll("[data-c]").forEach(i=>i.onchange=()=>{S.codes[i.dataset.c].w=Math.max(0,+i.value||0);save();renderWeights()});
-  main.querySelectorAll("[data-cg]").forEach(i=>i.onchange=()=>{S.codes[i.dataset.cg].g=i.value;save();renderWeights()});
+  main.querySelectorAll("[data-g]").forEach(i=>i.onchange=()=>{S.groups[i.dataset.g].w=Math.max(0,+i.value||0);touchCfg();renderWeights()});
+  main.querySelectorAll("[data-c]").forEach(i=>i.onchange=()=>{S.codes[i.dataset.c].w=Math.max(0,+i.value||0);touchCfg();renderWeights()});
+  main.querySelectorAll("[data-cg]").forEach(i=>i.onchange=()=>{S.codes[i.dataset.cg].g=i.value;touchCfg();renderWeights()});
   main.querySelector("#addc").onclick=()=>{const c=(prompt("New category code (e.g. FITF)")||"").trim().toUpperCase();if(!c)return;if(S.codes[c]){toast("Already exists");return}
-    S.codes[c]={g:"per",w:1,name:"",ord:Object.keys(S.codes).length};save();renderWeights()};
-  main.querySelector("#st").onchange=e=>{if(e.target.value){S.start=e.target.value;save();toast("Saved")}};
+    S.codes[c]={g:"per",w:1,name:"",ord:Object.keys(S.codes).length};touchCfg();renderWeights()};
+  main.querySelector("#st").onchange=e=>{if(e.target.value){S.start=e.target.value;touchCfg();toast("Saved")}};
+  main.querySelector("#syncnow").onclick=()=>pull(true);
   main.querySelector("#exp").onclick=()=>{const b=new Blob([JSON.stringify(S,null,1)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="habits-backup-"+T()+".json";a.click()};
   main.querySelector("#imp").onclick=()=>main.querySelector("#impf").click();
-  main.querySelector("#impf").onchange=e=>{const f=e.target.files[0];if(!f)return;f.text().then(t=>{try{const x=JSON.parse(t);if(!x.habits||!x.codes)throw 0;S=x;save();toast("Restored");renderWeights()}catch(err){toast("Not a habits backup")}})};
+  main.querySelector("#impf").onchange=e=>{const f=e.target.files[0];if(!f)return;f.text().then(t=>{try{const x=JSON.parse(t);if(!x.habits||!x.codes)throw 0;S=x;if(!S.ts){S.ts={};for(const k in S.log)for(const id in S.log[k])S.ts[k+"|"+id]=Date.now();}for(const k in S.log)queueSync(k);touchCfg();toast("Restored");renderWeights()}catch(err){toast("Not a habits backup")}})};
 }
 
 
-const pend=new Set();let st=null;
-function queueSync(k){pend.add(k);clearTimeout(st);st=setTimeout(flushSync,2500)}
+const URLS="https://script.google.com/macros/s/AKfycbztATiu4PQzOnIuSqcF1AocXGo1RfsupmiqJVyFjFSRJUl5Jb_bS2Y8YTTcJ5IZwO19YQ/exec";
+const pend=new Set();let st=null,lastSync=0,syncErr="",pulling=false;
+function pass(){try{return JSON.parse(localStorage.getItem("appsync-pass"))||""}catch(e){return ""}}
+function queueSync(k){pend.add(k);clearTimeout(st);st=setTimeout(flushSync,1500)}
+function bucketRow(k){
+  const f=k[0],key=k.slice(2),L=S.log[k]||{};const sync={},details={};
+  for(const t in S.ts){const p=t.lastIndexOf("|");if(t.slice(0,p)!==k)continue;const id=t.slice(p+1);
+    sync[id]=[L[id]===undefined?null:L[id],S.ts[t]];}
+  S.habits.forEach(h=>{if(L[h.id]!==undefined)details[h.name]=L[h.id]});
+  details._sync=sync;
+  const r=period(f,key);const done=Object.values(L).filter(q=>q>0).length;
+  const lab={D:"Day",W:"Week from",M:"Month"}[f];
+  return {id:k,date:f==="M"?key+"-01":key,
+    summary:`${lab} ${key}: ${fmt(bucket(k))} pts from ${FREQ[f].toLowerCase()} habits (${done} done)`+(f==="D"?` · ${r.pct}% of day`:` · whole ${f==="W"?"week":"month"} so far ${fmt(r.pts)} pts, ${r.pct}%`),
+    details};
+}
 function flushSync(){
   if(!window.AppSync)return;
-  pend.forEach(k=>{
-    const [f,key]=[k[0],k.slice(2)];const L=S.log[k]||{};
-    const type=f;const r=period(type,f==="M"?key:key);
-    const details={};
-    S.habits.filter(h=>h.f===f).forEach(h=>{if(L[h.id]!==undefined)details[h.name]=L[h.id]});
-    const done=Object.values(L).filter(q=>q>0).length;
-    const lab={D:"Day",W:"Week from",M:"Month"}[f];
-    const ownPts=bucket(k);
-    AppSync.send("habits",{id:k,date:f==="M"?key+"-01":key,
-      summary:`${lab} ${key}: ${fmt(ownPts)} pts from ${FREQ[f].toLowerCase()} habits (${done} done)`+(f==="D"?` · ${r.pct}% of day`:` · whole ${f==="W"?"week":"month"} so far ${fmt(r.pts)} pts, ${r.pct}%`),
-      details});
-  });
+  pend.forEach(k=>AppSync.send("habits",bucketRow(k)));
   pend.clear();
+}
+function pushCfg(){
+  if(!window.AppSync)return;
+  AppSync.send("habits",{id:"config",date:T(),summary:`Settings: ${active().length} habits, Professional ×${S.groups.pro.w}, Personal ×${S.groups.per.w}`,
+    details:{_cfg:{ts:S.cfgTs,start:S.start,groups:S.groups,codes:S.codes,habits:S.habits}}});
+}
+function syncText(){
+  if(!pass())return "Not connected yet: type your password in the orange box at the top.";
+  if(syncErr)return "⚠ "+syncErr;
+  if(!lastSync)return "Not synced yet";
+  const d=new Date(lastSync);return "✓ Synced at "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
+}
+function showSync(){const e=document.getElementById("syncst");if(e)e.textContent=syncText()}
+async function pull(manual){
+  const p=pass();if(!p){showSync();if(manual)toast("Type your password first");return}
+  if(pulling)return;pulling=true;
+  try{
+    if(window.AppSync)AppSync.flush();
+    const r=await (await fetch(URLS,{method:"POST",body:JSON.stringify({key:p,app:"habits",read:true})})).json();
+    if(!r.ok){syncErr=r.error==="password"?"Wrong password":"Sync error";return}
+    syncErr="";let changed=false;const remote={},remoteNew={};
+    const byName={};S.habits.forEach(h=>byName[h.name]=h.id);
+    // settings first, so habit ids are known
+    const cfg=r.rows.find(x=>x.id==="config");
+    const rc=cfg&&cfg.details&&cfg.details._cfg;
+    if(rc&&rc.ts>S.cfgTs){S.groups=rc.groups;S.codes=rc.codes;S.habits=rc.habits;S.start=rc.start;S.cfgTs=rc.ts;changed=true;
+      S.habits.forEach(h=>byName[h.name]=h.id);}
+    else if(S.cfgTs>(rc?rc.ts:0))pushCfg();
+    r.rows.forEach(row=>{
+      const k=row.id;if(!/^[DWM]:/.test(k))return;
+      const d=row.details||{};const sync=d._sync;const seen={};
+      if(sync){for(const id in sync)seen[id]=sync[id];}
+      else{for(const n in d){const id=byName[n];if(id&&typeof d[n]==="number")seen[id]=[d[n],0];}}
+      remote[k]=seen;if(sync)remoteNew[k]=1;
+      for(const id in seen){const [q,t]=seen[id];const tk=k+"|"+id;const lt=S.ts[tk];
+        if(lt===undefined||(t||1)>lt){
+          const L=S.log[k]||(S.log[k]={});
+          if(q===null)delete L[id];else L[id]=q;
+          if(!Object.keys(L).length)delete S.log[k];
+          S.ts[tk]=t||1;changed=true;
+          if(k[0]==="D"&&k.slice(2)<S.start&&q!==null){S.start=k.slice(2)}
+        }}
+    });
+    // send anything this device has that the sheet doesn't
+    const keys=new Set();for(const t in S.ts)keys.add(t.slice(0,t.lastIndexOf("|")));
+    keys.forEach(k=>{const R=remote[k]||{};
+      for(const t in S.ts){const p2=t.lastIndexOf("|");if(t.slice(0,p2)!==k)continue;const id=t.slice(p2+1);
+        if(!R[id]||(R[id][1]||1)<S.ts[t]||!remoteNew[k]){queueSync(k);break}}});
+    save();lastSync=Date.now();
+    if(changed&&!document.querySelector(".modal")&&document.activeElement.tagName!=="INPUT"){const y=window.scrollY;render();window.scrollTo(0,y)}
+    if(manual)toast(changed?"Updated from your other device":"Everything is in sync");
+  }catch(e){syncErr="Offline, will sync later"}
+  finally{pulling=false;showSync()}
 }
 window.addEventListener("pagehide",flushSync);
 
@@ -561,8 +622,13 @@ function render(){
 }
 document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>{view=b.dataset.v;if(view==="today")cur=T();render();window.scrollTo(0,0)});
 // new day while the app stays open
-document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&view==="today")render()});
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"){if(view==="today")render();pull()}});
+window.addEventListener("online",()=>pull());
+setInterval(()=>{if(document.visibilityState==="visible")pull()},120000);
 render();
+pull();
+// first run after the password is typed
+(function(){const b=document.getElementById("appsync-save");if(b)b.addEventListener("click",()=>setTimeout(()=>pull(true),2500))})();
 if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
 </script>
 </body>
